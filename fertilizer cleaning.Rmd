@@ -1,0 +1,105 @@
+---
+title: "Untitled"
+author: "Nikhil Kalathil"
+date: "3/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+us_fert <- us_practices_totals %>% 
+  filter(practice == "Fertilizer") %>% 
+  mutate(operations = case_when(
+    size == "All Farms" ~ 50105, 
+    size == "FARM AREA: (1.0 TO 9.9 ACRES)" ~ 9776, 
+    size == "FARM AREA: (10.0 TO 49.9 ACRES)" ~ 15026, 
+    size == "FARM AREA: (500 TO 999 ACRES)" ~ 2335, 
+    size == "FARM AREA: (1,000 TO 1,999 ACRES)" ~ 1258, 
+    size == "FARM AREA: (2,000 OR MORE ACRES)" ~ 1109, 
+    size == "FARM AREA: (50.0 TO 69.9 ACRES)" ~ 3251, 
+    size == "FARM AREA: (70.0 TO 99.9 ACRES)" ~ 4086, 
+    size == "FARM AREA: (100 TO 139 ACRES)" ~ 3687, 
+    size == "FARM AREA: (140 TO 179 ACRES)" ~ 2470, 
+    size == "FARM AREA: (180 TO 219 ACRES)" ~ 1730, 
+    size == "FARM AREA: (220 TO 259 ACRES)" ~ 1340, 
+    size == "FARM AREA: (260 TO 499 ACRES)" ~ 4037
+  ), 
+  acres = case_when(
+    size == "All Farms" ~ 3454441, 
+    size == "FARM AREA: (1.0 TO 9.9 ACRES)" ~ 24007, 
+    size == "FARM AREA: (10.0 TO 49.9 ACRES)" ~ 170974, 
+    size == "FARM AREA: (500 TO 999 ACRES)" ~ 550310, 
+    size == "FARM AREA: (1,000 TO 1,999 ACRES)" ~ 548443, 
+    size == "FARM AREA: (2,000 OR MORE ACRES)" ~ 864434, 
+    size == "FARM AREA: (50.0 TO 69.9 ACRES)" ~ 81486, 
+    size == "FARM AREA: (70.0 TO 99.9 ACRES)" ~ 140357, 
+    size == "FARM AREA: (100 TO 139 ACRES)" ~ 166983, 
+    size == "FARM AREA: (140 TO 179 ACRES)" ~ 153427, 
+    size == "FARM AREA: (180 TO 219 ACRES)" ~ 128877, 
+    size == "FARM AREA: (220 TO 259 ACRES)" ~ 116066, 
+    size == "FARM AREA: (260 TO 499 ACRES)" ~ 509077))
+```
+
+```{r}
+fert_sizes <- us_fert %>% 
+  filter(size %in% c("FARM AREA: (50.0 TO 69.9 ACRES)", "FARM AREA: (70.0 TO 99.9 ACRES)")) %>% 
+  group_by(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME) %>% 
+  summarise(ops = sum(operations), acres = sum(acres), total_ops = sum(total_ops), total_acres = sum(total_acres)) %>% 
+  mutate(size = "FARM AREA: (50.0 TO 99.9 ACRES)")
+
+```
+
+```{r}
+fert_holder <- us_fert %>% 
+  filter(size %in% c("All Farms","FARM AREA: (1.0 TO 9.9 ACRES)", "FARM AREA: (10.0 TO 49.9 ACRES)", "FARM AREA: (1,000 TO 1,999 ACRES)", "FARM AREA: (2,000 OR MORE ACRES)")) %>% 
+  rename(ops = operations) %>%
+  bind_rows(fert_sizes, . ) 
+```
+
+```{r}
+fert_sizes <- us_fert %>% 
+  filter(size %in% c("FARM AREA: (100 TO 139 ACRES)", "FARM AREA: (140 TO 179 ACRES)", "FARM AREA: (180 TO 219 ACRES)")) %>% 
+  group_by(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME) %>% 
+  summarise(ops = sum(operations), acres = sum(acres), total_ops = sum(total_ops), total_acres = sum(total_acres)) %>% 
+  mutate(size = "FARM AREA: (100 TO 199 ACRES)")
+
+```
+
+```{r}
+fert_holder <- bind_rows(fert_holder, fert_sizes)
+```
+
+
+```{r}
+fert_sizes <- us_fert %>% 
+  filter(size %in% c("FARM AREA: (220 TO 259 ACRES)", "FARM AREA: (260 TO 499 ACRES)")) %>% 
+  group_by(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME) %>% 
+  summarise(ops = sum(operations), acres = sum(acres), total_ops = sum(total_ops), total_acres = sum(total_acres)) %>% 
+  mutate(size = "FARM AREA: (200 TO 499 ACRES)")
+
+```
+
+```{r}
+fert_holder <- bind_rows(fert_holder, fert_sizes)
+```
+
+
+```{r}
+fert_holder <- fert_holder %>% 
+  rename(operations = ops) %>% 
+  mutate(practice = "Organic Fertilizer", ops_adopt = operations/total_ops, acres_adopt = acres/total_acres)
+```
+
+```{r}
+us_practices_totals <- us_practices_totals %>% 
+  bind_rows(fert_holder, .) %>% 
+  filter(practice != "Fertilizer")
+```
+
+```{r}
+write_csv(us_practices_totals, "us_practices_totals.csv")
+```
+

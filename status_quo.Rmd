@@ -1,0 +1,358 @@
+---
+title: "Nation and State Soil Health Practices Status Quo"
+author: "Nikhil Kalathil"
+date: "3/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+options(knitr.kable.NA = "**")
+```
+
+
+```{r libraries, include = FALSE}
+library(tidyverse)
+library(ggthemes)
+library(RColorBrewer)
+```
+
+
+```{r us_data1, include = FALSE}
+us_practices_totals <- read_csv("us_practices_totals.csv") 
+```
+
+We have identified five representative soil health and carbon sequestration practices to establish an estiamte of the status quo adoption rate for regenerative agriculutral practices at large. These five practices are: 
+
+* Cover Crops
+* Crop Rotation
+* No Till
+* Reduced Till
+* Organic Fertilizer  
+
+
+In the 2017 Census Data, the total number of US farm locations and farm acreage is given below.  
+```{r}
+us_practices_totals %>%
+filter(size == "All Farms") %>% 
+  mutate(Region = "US Total") %>% 
+  group_by(Region) %>% 
+  summarize("Operations" = mean(total_ops), "Acres" = mean(total_acres)) %>% 
+  knitr::kable(, caption = "Total US Farms", digits = 2, format.args = list(big.mark = ",", 
+  scientific = FALSE))
+```
+
+We have data about these five indicators from the 2017 US Agricultural Census. This census provides us with state and national estimates of farm acerage, farm operations, and the number of acres and operations that specific practices are applied on. 
+
+```{r, echo = FALSE}
+us_practices_totals %>% 
+  filter(size == "All Farms") %>% 
+  mutate(ops_adopt = round(100*ops_adopt,2), 
+         acres_adopt = round(100*acres_adopt,2)) %>% 
+  arrange(-ops_adopt) %>% 
+  select(Practice = practice, "% of Farm Operations Adopting" = ops_adopt, "% of Acres Practiced On" = acres_adopt) %>% 
+  knitr::kable(, caption = "% of Farms Practicing Representative Restorative Agriculutral Practices", digits = 2, format.args = list(big.mark = ",", 
+  scientific = FALSE))
+```
+
+
+
+```{r}
+ops_plot <- us_practices_totals %>% 
+  filter(size == "All Farms") %>% 
+  ggplot(aes(reorder(practice, ops_adopt), 100*ops_adopt, label = round(100*ops_adopt, 1))) + 
+  geom_col(aes(fill = practice), show.legend = FALSE) +
+  geom_label(aes(fill = practice), hjust = 0.45, show.legend = FALSE) +  
+  scale_fill_brewer(palette = "Set3", drop = FALSE) + 
+  coord_flip() + 
+  labs(x = "Practice", y = "Percent of Operations", title = "Percent of US Operations Adopting Soil Health Practices") + 
+  theme_hc()
+```
+
+```{r, include = FALSE}
+my_palette <- c(brewer.pal(9, "Set3")[1], brewer.pal(9, "Set3")[3], brewer.pal(9, "Set3")[4], brewer.pal(9, "Set3")[5])
+```
+
+
+```{r}
+acres_plot <- us_practices_totals %>% 
+  filter(size == "All Farms", !is.na(acres_adopt)) %>% 
+  ggplot(aes(reorder(practice, acres_adopt), 100*acres_adopt, label = round(100*acres_adopt, 1))) + 
+  geom_col(aes(fill = practice), show.legend = FALSE) +
+  geom_label(aes(fill = practice), hjust = 0.45, show.legend = FALSE) + 
+  scale_fill_manual(values = my_palette) +
+  coord_flip() + 
+  labs(x = "Practice", y = "% of Acres Practiced On", title = "Percent of US Farmland Acres Farmed Using Soil Health Practices") + 
+  theme_hc()
+```
+
+We can see that these practices are not widely adopted across the US. No-till and reduced-tilling are the most commonly adopted practices. This difference in adoption rate is at least partially driven by the fact that no-till and reduced-till actually save money and labor, while cover crops and organic fertilizer require monetary expenditures.
+
+## By Size 
+
+How does adoption of these practices vary by farm size? 
+
+```{r, include = FALSE}
+my_palette2 <- c(brewer.pal(9, "Set3")[1], brewer.pal(9, "Set3")[3], brewer.pal(9, "Set3")[4], brewer.pal(9, "Set3")[5])
+```
+
+```{r, include = FALSE}
+us_practices_totals <- us_practices_totals %>% 
+  mutate(size1 = case_when(
+    size == "FARM AREA: (1.0 TO 9.9 ACRES)" ~ 1, 
+    size == "FARM AREA: (10.0 TO 49.9 ACRES)" ~ 2, 
+    size == "FARM AREA: (50.0 TO 99.9 ACRES)" ~ 3, 
+    size == "FARM AREA: (100 TO 199 ACRES)" ~ 4,
+    size == "FARM AREA: (200 TO 499 ACRES)" ~ 5, 
+    size == "FARM AREA: (500 TO 999 ACRES)" ~ 6, 
+    size == "FARM AREA: (1,000 TO 1,999 ACRES)" ~ 7, 
+    size == "FARM AREA: (2,000 OR MORE ACRES)" ~ 8, 
+    size == "FARM AREA: (50.0 TO 69.9 ACRES)" ~ 3.2, 
+    size == "FARM AREA: (70.0 TO 99.9 ACRES)" ~ 3.7, 
+    size == "FARM AREA: (100 TO 139 ACRES)" ~ 4.2, 
+    size == "FARM AREA: (140 TO 179 ACRES)" ~ 4.7, 
+    size == "FARM AREA: (180 TO 219 ACRES)" ~ 4.9, 
+    size == "FARM AREA: (220 TO 259 ACRES)" ~ 5.2, 
+    size == "FARM AREA: (260 TO 499 ACRES)" ~ 5.7
+  ))
+```
+
+
+```{r, echo = FALSE}
+size_ops <- us_practices_totals %>% 
+  filter(size != "All Farms") %>% 
+  mutate(size = str_replace(size, "FARM AREA:", "")) %>% 
+  mutate(size = str_replace(size, "ACRES", ""))  %>% 
+  mutate(size = str_replace(size, "\\(", "")) %>% 
+  mutate(size = str_replace(size, "\\)", "")) %>%
+  ggplot(aes(reorder(size, size1), 100*ops_adopt, label = round(100*ops_adopt, 1), color = practice, fill = practice, group = practice)) + 
+  geom_line(size=1, show.legend = FALSE, position = "dodge") +
+  geom_point(shape = 21, color = "Black", size = 3, alpha = 0.75) + 
+  scale_color_manual(values = my_palette2) +
+  scale_fill_manual(values = my_palette2) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8)) + 
+  labs(title = "Percent of US Operations Adopting Soil Health Practices", subtitle = "By Farm Size", fill = "Practice", x = "Farm Size (in Acres)", y = "Percent of Operations") + 
+  theme_hc() +
+  theme(legend.position = "right")
+```
+
+From this graph, we can see that as the size of the farm increased up to 2,000 acres, a greater percent of farms adopt no-till and reduced till practices. As farm size increases, the benefit-cost ratio of using no-till and reduced-till practices increases. The decline in adoption of these practices among large farms of 2,000 or more acres could be driven by the fact that these large farms are corporate mega-farms. We also notice a slight decline in adoption of cover crops as farm size increases. 
+
+```{r, echo = FALSE}
+acres_size <- us_practices_totals %>% 
+  filter(size != "All Farms", !is.na(acres_adopt)) %>% 
+  mutate(size = str_replace(size, "FARM AREA:", "")) %>% 
+  mutate(size = str_replace(size, "ACRES", ""))  %>% 
+  mutate(size = str_replace(size, "\\(", "")) %>% 
+  mutate(size = str_replace(size, "\\)", "")) %>%
+  ggplot(aes(reorder(size, size1), 100*acres_adopt, label = round(100*acres_adopt, 1), fill = practice, group = practice, color = practice)) + 
+  geom_line(size=1, show.legend = FALSE, position = "dodge") +
+  geom_point(shape = 21, color = "Black", size = 3, alpha = 0.75) + 
+  scale_color_manual(values = my_palette2) +
+  scale_fill_manual(values = my_palette2) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8)) + 
+  labs(title = "Percent of US Farmland Acres Farmed Using Soil Health Practices", subtitle = "By Farm Size", fill = "Practice", x = "Farm Size (Acres)", y = "Percent of Acres Practiced On") + 
+  theme_hc() +
+  theme(legend.position = "right")
+```
+
+This same story is confirmed when we examine the nationwide percent of acres that specific pratices are utilized on. The decrease in adoption of cover crops as farm size gets larger supports the notion that as practice costs per acre increase, adoption decreases.  
+
+We now turn to a state-by-state analysis where focus on differences in adoption rates along two climates: dry/semiarid and moist/humid. We attempt to map states to these categories based on a 2006 IPCC report. We assign states to a single climate, and thus acknowledge this bias in our estimates. A more detailed analysis would more precicesly assign regions to these climates. 
+
+```{r, include = FALSE}
+state_practices <- read_csv("state_practices.csv")
+climate <- read_csv("climate.csv")
+```
+
+```{r, include = FALSE}
+state_practices <- left_join(state_practices, climate)
+```
+
+```{r}
+means <- state_practices %>% 
+  filter(!is.na(Climate)) %>% 
+  group_by(Climate, practice) %>% 
+  summarise(ops = sum(operations), acres = sum(acres, na.rm = TRUE), total_ops = sum(total_ops, na.rm = TRUE), total_acres = sum(total_acres, na.rm = TRUE)) %>% 
+  mutate(ops_adopt = ops/total_ops, acres_adopt = acres/total_acres)
+```
+
+```{r, include = FALSE}
+my_palette5 <- c(brewer.pal(9, "Set3")[1], brewer.pal(9, "Set3")[2], brewer.pal(9, "Set3")[3], brewer.pal(9, "Set3")[5])
+```
+
+
+```{r}
+state_ops <- state_practices %>% 
+  filter(size == "All Farms", practice != "Fertilizer", !is.na(Climate)) %>% 
+  ggplot(aes(reorder(STATE_ALPHA, ops_adopt), 100*ops_adopt, fill = practice, size = total_ops)) + 
+  geom_point(shape = 21, alpha = 0.5) + 
+  scale_fill_manual(values = my_palette5) +
+  theme_bw() + 
+  coord_flip() + 
+  facet_wrap(~Climate) +
+  theme(axis.text.y = element_text(size = 7)) + 
+  labs(title = "Percent of Operations Adopting Soil Health Practices", subtitle = "By State and Climate", y = "Percent of Operations", x = "", fill = "Practice", size = "Total Operations")
+```
+
+```{r, include = FALSE}
+my_palette4 <- c(brewer.pal(9, "Set3")[1], brewer.pal(9, "Set3")[3], brewer.pal(9, "Set3")[5])
+```
+
+
+```{r}
+state_acres <- state_practices %>% 
+  filter(size == "All Farms", practice != "Fertilizer", !is.na(Climate), !is.na(acres_adopt)) %>% 
+  ggplot(aes(reorder(STATE_ALPHA, acres_adopt), 100*acres_adopt, fill = practice, size = total_acres/1000)) + 
+  geom_point(shape = 21, alpha = 0.5) +
+  scale_fill_manual(values = my_palette4) +
+  theme_bw() + 
+  coord_flip() + 
+  facet_wrap(~Climate) +
+  theme(axis.text.y = element_text(size = 7)) + 
+  labs(title = "Percent of US Farmland Acres Farmed with Soil Health Practices", subtitle = "By State and Climate", y = "Percent of Acres", x = "", fill = "Practice", size = "Total Acres (in Thousands)")
+```
+
+
+From these graphs we learn that dry/semiarid climates seem to have large acreage operations, and that most US states are in moist/humid climates. We also see a high degree of variation in adoption of different pratices by state. Crop rotation seems to have the least of amount of variation in adoption between states. 
+
+It is difficult to draw any conclusions about differences in practice adoption between the two climates from these two graphs. However, we have other ways of representing our data that may allow us to better analyze differences in practice adoption by climate. 
+
+One such tool is a plot of the distribution of practice adoption by states. This density plot will tell us what percent of states have a specific adoption rate for each practice. 
+
+```{r, include = FALSE}
+my_palette3 <- c("#F4A460", "#00755e")
+```
+
+
+```{r}
+state_dens <- state_practices %>% 
+  filter(size == "All Farms", practice != "Fertilizer", !is.na(Climate)) %>% 
+  ggplot(aes(100*ops_adopt, fill = Climate)) +
+  geom_density(alpha = 0.7) +
+  scale_fill_manual(values = my_palette3) +
+  facet_wrap(~practice) + 
+  theme_hc() + 
+  theme(legend.position = "right") + 
+  labs(title = "Distribution of Percent of Operations Adopting a Practice", subtitle = "By State, and Climate", x = "Percent of Operations Adopting", y = "Probability Density", fill = "Climate")
+```
+
+
+From this graph we can see that the distribution of adoption percentages for crop rotation and no-till practices are roughly the same between dry/semiarid climates and between moist/humid climates. The distribution of adoption percentage for reduced till is similar across both clinmates, however, dry/semi-arid climates have a bimodal distribtion where some states have high adoption percentages. The difference in mean adoption percentage for cover crops could be driven by the difference in average farm size between the two climates. 
+
+## Carbon Sequestration
+
+For four of these practices (no-till, reduced till, cover crops, and crop rotations) we have can estimate the tons of CO2 equivalent sequestered per acre per year. 
+
+```{r, include = FALSE}
+state_practices <- state_practices %>% 
+  mutate(carbon = case_when(
+    practice == "No Till" & Climate == "Dry/Semiarid" ~ 0.39, 
+    practice == "No Till" & Climate == "Moist/Humid" ~ 0.34, 
+    practice == "Reduced Till" & Climate == "Dry/Semiarid" ~ 0.19, 
+    practice == "Reduced Till" & Climate == "Moist/Humid" ~ 0.22, 
+    practice == "Crop Rotation" & Climate == "Moist/Humid" ~ 0.24, 
+    practice == "Crop Rotation" & Climate == "Dry/Semiarid" ~ 0.29, 
+    practice == "Cover Crops" & Climate == "Dry/Semiarid" ~ 0.29, 
+    practice == "Cover Crops" & Climate == "Moist/Humid" ~ 0.41))
+```
+
+Since we do not have information for the numbers of acres that crop rotation is performed on, we must estimate this figure. Based on these data we see that the adoption rates of no-till and crop rotation are similar. As such, we will use data about no-till practices to estimate  weighted average acres per operation that we can impute into our crop rotation data. 
+
+```{r}
+rotation_estimate <- state_practices %>% 
+  filter(size != "All Farms", practice == "No Till") %>% 
+  mutate(acre_operation = acres/operations) %>% 
+  group_by(STATE_ALPHA) %>% 
+  summarise(acre_operation = weighted.mean(acre_operation, operations, na.rm = TRUE))
+```
+
+```{r}
+state_practices <- left_join(state_practices, rotation_estimate, by = "STATE_ALPHA")
+```
+
+```{r}
+state_practices <- state_practices %>% 
+  mutate(acres = case_when(
+    practice == "Crop Rotation" ~ (acre_operation*operations), 
+    TRUE ~ acres), 
+    carbon_tons = acres*carbon)
+```
+
+
+```{r}
+state_practices %>% 
+  filter(!is.na(Climate), practice != "Fertilizer", size == "All Farms") %>% 
+  group_by(practice, Climate) %>% 
+  summarise(carbon_tons = sum(carbon_tons)) %>%
+  arrange(desc(carbon_tons)) %>% 
+  select(Practice = practice, Climate, "Tons of Equivalent Carbon" = carbon_tons, ) %>% 
+  knitr::kable(, caption = "Estimated Nationwide Carbon Equivalent Sequestered by Soil Health Practice and Climate", digits = 0, format.args = list(big.mark = ",", 
+  scientific = FALSE))
+```
+
+```{r}
+state_clim <- state_practices %>% 
+  filter(!is.na(Climate), practice != "Fertilizer", size == "All Farms") %>% 
+  group_by(practice, Climate) %>% 
+  summarise(carbon_tons = sum(carbon_tons, na.rm = TRUE)) %>%
+  ggplot(aes(practice, carbon_tons, fill = practice, label = carbon_tons, group = practice)) + 
+  geom_col() + 
+  facet_wrap(~Climate) + 
+  scale_fill_manual(values = my_palette5) +
+  scale_y_continuous(labels = scales::comma) + 
+  labs(title = "Estimated Nationwide Carbon Equivalent Sequestered by Soil Health Practice and Climate", fill = "Practice", y = "Tons of Equivalent Carbon", x = "") + 
+  theme_hc() + 
+  theme(legend.position = "right", axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+We can see that moist/humid climates sequester more carbon, likely by virtue of having more farmland that soil health practices are adopted on. We also see that the the amount of carbon sequestered differs dramatically by practice. This is also likely driven by differences in adoption rates. As a percent of total carbon sequestered by climate is there a difference 
+
+```{r}
+carbon_practices <- state_practices %>% 
+  filter(!is.na(Climate), practice != "Fertilizer", size == "All Farms") %>% 
+  group_by(Climate, practice) %>% 
+  summarise(carbon_tons = sum(carbon_tons, na.rm = TRUE))
+```
+
+```{r}
+percent_carb <- carbon_practices %>% 
+  group_by(Climate) %>% 
+  summarise(total_carbon_tons = sum(carbon_tons, na.rm = TRUE)) %>% 
+  left_join(carbon_practices, .) %>% 
+  mutate(percent_carbon = 100*(carbon_tons/total_carbon_tons)) %>% 
+  ggplot(aes(Climate, percent_carbon, fill = practice, label = round(percent_carbon, 0))) + 
+  coord_flip() +
+  geom_col(position = "stack") + 
+  scale_fill_manual(values = my_palette5) + 
+  geom_text(size = 3, position = position_stack(vjust = 0.5)) + 
+  theme_bw() + 
+  theme(legend.position = "right") + 
+  labs(title = "Percent of Carbon Sequestered by Practice", y = "Percent of Carbon Sequestered", fill = "Practice")
+```
+
+We can see that in dry/semiarid climates crop rotation makes up a much higher percentage of carbon sequestered than in moist/humid climates. Conversely, moist/humid climates seem sequester more of their carbon through cover crops and reduced till practices. 
+
+Based on these data we can also estimate average equivalent carbon tons sequestered per operation. We have these data for four of our five practices: Cover Crops, Fertilizer, No Till, and Reduced Till. 
+
+
+```{r}
+ops_clim <- state_practices %>% 
+  filter(size != "All Farms") %>% 
+  mutate(carbon_ops = carbon_tons / operations) %>% 
+  group_by(Climate, practice) %>% 
+  summarise(carbon_ops = weighted.mean(carbon_ops, acres, na.rm = TRUE)) %>% 
+  filter(!is.na(Climate), !is.na(carbon_ops)) %>% 
+  ggplot(aes(practice, carbon_ops, fill = practice, label = round(carbon_ops, 0), group = practice)) + 
+  geom_col() + 
+  geom_text(vjust = 2) + 
+  facet_wrap(~Climate) + 
+  scale_fill_manual(values = my_palette4) +
+  scale_y_continuous(labels = scales::comma) + 
+  labs(title = "Estimated Carbon (and Carbon Equivalent) Sequestered per Operation", subtitle = "By Practice and Climate", fill = "Practice", y = "Tons of Equivalent Carbon", x = "") + 
+  theme_hc() + 
+  theme(legend.position = "right", axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+With these data we can now estimate the average amount that farmers will get paid for sequestering carbon under various policy proposals. We can estimate this average for three scenarios: 1) the policy does not incentivize any new adoption; 2) policies incentivize adoption uniformily; and 3) polices incentivize adoption differently. 
+

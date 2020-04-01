@@ -1,0 +1,424 @@
+---
+title: "USDA Farm Census"
+author: "Nikhil Kalathil"
+date: "3/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE}
+library(tidyverse)
+library(ggthemes)
+library(RColorBrewer)
+```
+
+```{r}
+census_2017 <- read.delim("2017_cdqt_data.txt", sep = "\t")
+```
+
+
+Start with some basic cleaning. 
+
+1. Seperate State from County
+
+
+```{r}
+state_census <- census_2017 %>% 
+  filter(COUNTY_CODE == "NULL", STATE_NAME != "US TOTAL") %>% 
+  select(-c(COUNTY_CODE, COUNTY_NAME)) 
+```
+
+```{r}
+us_total <- census_2017 %>% 
+  filter(STATE_NAME == "US TOTAL") 
+```
+
+0. Get state totals
+
+```{r}
+state_totals <- state_census %>% 
+  mutate(desc = case_when(
+    str_detect(SHORT_DESC, fixed("FARM OPERATIONS - ACRES OPERATED")) ~ "acres",
+    str_detect(SHORT_DESC, fixed("FARM OPERATIONS - NUMBER OF OPERATIONS")) ~ "operations" )) %>% 
+  filter(!is.na(desc))
+```
+
+```{r}
+state_ops <- state_totals %>% 
+  filter(desc == "operations", CENSUS_TABLE == 1) %>% 
+  mutate(size = if_else(as.character(DOMAINCAT_DESC) == "", "All Farms", as.character(DOMAINCAT_DESC))) %>% 
+  select(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME, operations = VALUE, size)
+```
+
+```{r}
+state_acres <- state_totals %>% 
+  filter(desc == "acres", CENSUS_TABLE == 9) %>% 
+  mutate(size = if_else(as.character(DOMAINCAT_DESC) == "", "All Farms", as.character(DOMAINCAT_DESC))) %>% 
+  select(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME, acres = VALUE, size)
+```
+
+```{r}
+state_all_farms <- left_join(state_ops, state_acres) %>% 
+  rename(total_acres = acres, total_ops = operations)
+```
+
+
+1. Cover crop
+
+
+```{r}
+cover_crop <- state_census %>% 
+  filter(str_detect(SHORT_DESC, "COVER"))
+```
+
+```{r}
+state_cover_expenses <- cover_crop %>% 
+  filter(str_detect(SHORT_DESC, "OPERATIONS WITH EXPENSE"), CENSUS_TABLE == 4) %>% 
+  mutate(size = case_when(
+    DOMAINCAT_DESC == "" ~ "All Farms", 
+    TRUE ~ as.character(DOMAINCAT_DESC)
+  ), 
+  practice = "cover_crop") %>% 
+  select(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME, operations = VALUE, size, practice)
+```
+
+
+```{r}
+cover_crop <- cover_crop %>% 
+  filter(str_detect(SHORT_DESC, "PRACTICES")) %>% 
+  mutate(desc = case_when(
+    SHORT_DESC == "PRACTICES, LAND USE, CROPLAND, COVER CROP PLANTED, (EXCL CRP) - ACRES" ~ "acres",
+    SHORT_DESC == "PRACTICES, LAND USE, CROPLAND, COVER CROP PLANTED, (EXCL CRP) - NUMBER OF OPERATIONS" ~ "operations")) %>% 
+  filter(!is.na(desc)) 
+```
+
+```{r}
+cover_crop <- cover_crop %>% 
+  mutate(size = case_when(
+    DOMAINCAT_DESC == "" ~ "All Farms",
+    TRUE ~ as.character(DOMAINCAT_DESC)
+  ))
+```
+
+
+```{r}
+cover_crops <- cover_crop %>% 
+  filter(CENSUS_TABLE == 47) %>% 
+  select(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME, VALUE, desc, size) %>% 
+  pivot_wider(id_cols = -c("VALUE"), names_from = "desc", values_from = "VALUE") %>% 
+  mutate(practice = "cover_crops") 
+```
+ 
+ 
+ 2. Tillage 
+ 
+```{r}
+tillage <- state_census %>% 
+  filter(str_detect(SHORT_DESC, "NO-TILL"), !str_detect(SHORT_DESC, "ACRES / OPERATION"), CENSUS_TABLE == 47) %>% 
+  mutate(desc = case_when(
+    str_detect(SHORT_DESC, "OPERATION") ~ "operations",
+    str_detect(SHORT_DESC, "ACRES") ~ "acres"), 
+    size = case_when(
+    DOMAINCAT_DESC == "" ~ "All Farms", 
+    TRUE ~ as.character(DOMAINCAT_DESC)
+  ), 
+  practice = case_when(
+    str_detect(SHORT_DESC, "EXCL") ~ "reduced_till",
+    TRUE ~ "no_till"))
+```
+
+```{r}
+state_practices <- tillage %>% 
+  select(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME, VALUE, desc, size, practice) %>%
+  pivot_wider(id_cols = -c("VALUE"), names_from = "desc", values_from = "VALUE")
+```
+
+```{r}
+state_practices <- bind_rows(state_practices, cover_crops)
+```
+
+3. Fertilizer
+
+```{r}
+fert <- state_census %>% 
+  filter(str_detect(SHORT_DESC, "FERTILIZER"), !str_detect(SHORT_DESC, "ACRES / OPERATION"))
+```
+
+
+```{r}
+fertilizer <- fert %>% 
+  filter(str_detect(SHORT_DESC, "OPERATIONS WITH EXPENSE"), COMMODITY_DESC == "FERTILIZER TOTALS", CENSUS_TABLE == 71) %>% 
+  mutate(desc = "operations", 
+         size = case_when(
+    DOMAINCAT_DESC == ""  ~ "All Farms", 
+    TRUE ~ as.character(DOMAINCAT_DESC)
+  ), 
+  practice = "fertilizer") # FERTILIZER TOTALS, INCL LIME & SOIL CONDITIONERS - Operations with Expense 
+```
+
+```{r}
+state_fert_expenses <- fertilizer %>% 
+  filter(CENSUS_COLUMN == 1, CENSUS_ROW >= 149) %>% 
+  select(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME, operations = VALUE, size, practice)
+```
+
+```{r}
+state_expenses <- bind_rows(state_fert_expenses, state_cover_expenses) %>% 
+  filter(size != "All Farms")
+```
+
+
+```{r}
+state_fert_prac <- fertilizer %>% 
+  filter(CENSUS_ROW == 147) %>% 
+  select(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME, VALUE, desc, size, practice) %>%
+  pivot_wider(id_cols = -c("VALUE"), names_from = "desc", values_from = "VALUE")
+```
+
+```{r}
+state_practices <- bind_rows(state_practices, state_fert_prac)
+```
+
+
+
+3. Rotational
+
+
+```{r}
+rotational <- state_census %>% 
+  filter(str_detect(SHORT_DESC, "ROTATIONAL"))
+```
+
+```{r}
+rotational <- rotational %>% 
+  mutate(practice = "rotational", 
+         desc = "operations", 
+         size = "All Farms") %>% 
+  select(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME, operations = VALUE, size, practice)
+```
+
+
+```{r}
+state_practices <- bind_rows(state_practices, rotational)
+```
+
+5. Crop Insurance 
+
+```{r}
+crop_ins <- state_census %>% 
+  filter(str_detect(SHORT_DESC, "CROP INSURANCE"))
+```
+
+
+```{r}
+state_crop_insurance <- crop_ins %>% 
+  filter(CENSUS_TABLE == 71) %>% 
+  mutate(size = case_when(
+    DOMAINCAT_DESC == "" ~ "All Farms", 
+    TRUE ~ as.character(DOMAINCAT_DESC)), 
+    desc = case_when(
+      str_detect(SHORT_DESC, "OPERATIONS") ~ "operations", 
+      str_detect(SHORT_DESC, "ACRES") ~ "acres"), 
+    policy = "Crop Insurance") %>% 
+    select(STATE_FIPS_CODE, STATE_ALPHA, STATE_NAME, VALUE, desc, size, policy) %>%
+  pivot_wider(id_cols = -c("VALUE"), names_from = "desc", values_from = "VALUE")
+```
+
+```{r}
+write_csv(state_practices, "state_practices.csv") 
+write_csv(state_expenses, "state_expenses.csv")
+write_csv(state_crop_insurance, "state_crop_ins.csv")
+```
+
+```{r}
+write_csv(state_all_farms, "state_totals.csv")
+```
+
+## FINAL CLEANING PRE-Analysis
+
+```{r}
+#MAY NEED TO RUN TWICE
+state_practices <- state_practices %>% 
+  mutate(operations = str_replace(operations, ",", ""),
+         acres = str_replace(acres, ",", ""))
+
+state_expenses <- state_expenses %>% 
+  mutate(operations = str_replace(operations, ",", ""))
+
+state_crop_insurance <- state_crop_insurance %>% 
+  mutate(operations = str_replace(operations, ",", ""),
+         acres = str_replace(acres, ",", ""))
+```
+
+
+```{r}
+state_practices <- state_practices %>% 
+  mutate(operations = str_replace(operations, "(D)", ""),
+         acres = str_replace(acres, "(D)", ""))
+
+state_expenses <- state_expenses %>% 
+  mutate(operations = str_replace(operations, "(D)", ""))
+
+state_crop_insurance <- state_crop_insurance %>% 
+  mutate(operations = str_replace(operations, "(D)", ""),
+         acres = str_replace(acres, "(D)", ""))
+```
+
+
+```{r}
+state_practices <- state_practices %>% 
+  mutate(operations = as.numeric(operations), 
+         acres = as.numeric(acres))
+```
+
+```{r}
+state_all_farms <- state_all_farms %>% 
+  mutate(total_ops= str_replace(total_ops, ",", ""),
+         total_acres = str_replace(total_acres, ",", "")) 
+```
+
+
+
+```{r}
+state_all_farms <- state_all_farms %>%
+    mutate(total_ops = as.numeric(total_ops), 
+         total_acres = as.numeric(total_acres))
+```
+
+```{r}
+state_merge <- state_all_farms %>% 
+  mutate(size = str_replace(size, "AREA OPERATED", "FARM AREA"), 
+         size = str_replace(size, "AREA PRACTICED", "FARM AREA"))
+```
+
+
+```{r}
+state_practices <- state_practices %>% 
+  mutate(size = str_replace(size, "AREA OPERATED", "FARM AREA"), 
+         size = str_replace(size, "AREA PRACTICED", "FARM AREA"))
+```
+
+
+```{r}
+prac_merge_state <- left_join(state_practices, state_merge)
+```
+
+```{r}
+prac_merge_state <- prac_merge_state %>% 
+  mutate(ops_adopt = operations/total_ops, 
+         acres_adopt = acres/total_acres)
+```
+
+```{r}
+prac_merge_state <- prac_merge_state %>% 
+  mutate(practice = case_when(
+    practice == "cover_crops" ~ "Cover Crops", 
+    practice == "fertilizer" ~ "Fertilizer", 
+    practice == "no_till" ~ "No Till", 
+    practice == "reduced_till" ~ "Reduced Till", 
+    practice == "rotational" ~ "Crop Rotation"
+  ))
+```
+
+
+```{r}
+prac_merge_state %>% 
+  filter(size == "All Farms") %>% 
+  ggplot(aes(reorder(STATE_ALPHA, ops_adopt), 100*ops_adopt, fill = practice, size = total_ops)) + 
+  geom_point(shape = 21, color = "black", alpha = 0.5) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_bw() + 
+  coord_flip() + 
+  theme(axis.text.y = element_text(size = 7)) + 
+  labs(title = "Percent of Operations Adopting a Practice", subtitle = "By State", y = "Percent of Operations", x = "", fill = "Practice", size = "Total Operations")
+```
+
+```{r}
+ggsave("state_practice_ops.png", device = "png")
+```
+
+
+```{r}
+prac_merge_state %>% 
+  filter(size == "All Farms", !is.na(acres_adopt)) %>% 
+  ggplot(aes(reorder(STATE_ALPHA, acres_adopt), 100*acres_adopt, fill = practice, size = total_acres/1000)) + 
+  geom_point(shape = 21, color = "black", alpha = 0.5) +
+  scale_fill_manual(values = my_palette) +
+  theme_bw() + 
+  coord_flip() + 
+  theme(axis.text.y = element_text(size = 7)) + 
+  labs(title = "Percent of Acres with a Specific Practice", subtitle = "By State", y = "Percent of Acres", x = "", fill = "Practice", size = "Total Acres (in Thousands)")
+```
+
+
+```{r}
+ggsave("state_practice_acres.png", device = "png")
+```
+
+
+```{r}
+write_csv(prac_merge_state, "state_practices.csv")
+```
+
+
+```{r}
+climate <- read_csv("climate.csv")
+```
+
+```{r}
+prac_merge_state <- left_join(prac_merge_state, climate)
+```
+```{r}
+climate_calcs <- prac_merge_state %>% 
+  group_by(Climate, size, practice) %>% 
+  summarise(total_acres = sum(total_acres), total_ops = sum(total_ops), operations = sum(operations), acres = sum(acres))
+```
+
+```{r}
+climate_calcs <- climate_calcs %>% 
+  rename(climate = Climate) %>% 
+  mutate(ops_adopt = operations/total_ops, 
+         acres_adopt = acres/total_acres)
+```
+
+```{r}
+climate_calcs %>% 
+  filter(size == "All Farms", !is.na(climate)) %>% 
+  ggplot(aes(reorder(practice, ops_adopt), 100*ops_adopt, label = round(100*ops_adopt, 1))) + 
+  geom_col(aes(fill = practice), show.legend = FALSE) +
+  geom_text(hjust = 1) + 
+  scale_fill_brewer(palette = "Set3", drop = FALSE) + 
+  coord_flip() + 
+  facet_wrap(~climate) + 
+  labs(x = "Practice", y = "Percent of Operations", title = "Percent of US Operations that Have Adopted a Specific Practice", subtitle = "by Climate") + 
+  theme_hc()
+```
+
+```{r}
+ggsave("climate_ops.png", device = "png")
+```
+```{r}
+my_palette <- c(brewer.pal(5, "Set3")[2], brewer.pal(5, "Set3")[4], brewer.pal(5, "Set3")[5])
+```
+
+
+```{r}
+climate_calcs %>% 
+  filter(size == "All Farms", !is.na(acres_adopt), !is.na(climate)) %>% 
+  ggplot(aes(reorder(practice, acres_adopt), 100*acres_adopt, label = round(100*acres_adopt, 1))) + 
+  geom_col(aes(fill = practice), show.legend = FALSE) +
+  geom_text(hjust = 0.65, vjust = 1) + 
+  facet_wrap(~climate) +
+  scale_fill_manual(values = my_palette) +
+  coord_flip() + 
+  labs(x = "Practice", y = "Percent of Acres", title = "Percent of US Acres with a Specific Practice") + 
+  theme_hc()
+```
+
+```{r}
+ggsave("climate_acres.png", device = "png")
+```
+
