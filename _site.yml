@@ -1,0 +1,12 @@
+name: "Status Quo Report"
+output_dir: "docs"
+navbar:
+  title: "Status Quo Report"
+  left:
+  - text: "Home"
+   href: index.html
+  - text: "Status Quo Report"
+   href: status_quo.html
+output:
+  html_document:
+ theme: cosmo
